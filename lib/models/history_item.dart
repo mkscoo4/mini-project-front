@@ -16,4 +16,30 @@ class HistoryItem {
     required this.spamReason,
     required this.chatGptText,
   });
+
+  // toJson
+  Map<String, dynamic> toJson() {
+    return {
+      'icon': icon,
+      'title': title,
+      'content': content,
+      'dateTime': dateTime,
+      'spamScore': spamScore,
+      'spamReason': spamReason,
+      'chatGptText': chatGptText,
+    };
+  }
+
+  // fromJson
+  factory HistoryItem.fromJson(Map<String, dynamic> json) {
+    return HistoryItem(
+      icon: json['icon'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      dateTime: json['dateTime'] as String? ?? '',
+      spamScore: (json['spamScore'] as num?)?.toDouble() ?? 0.0,
+      spamReason: json['spamReason'] as String? ?? '',
+      chatGptText: json['chatGptText'] as String? ?? '',
+    );
+  }
 }

@@ -336,20 +336,31 @@ class MessageManager {
     _saveMessages();
   }
 
-  // (테스트용) 더미 데이터 삽입
+ // (테스트용) 더미 데이터 삽입
   void _insertDummyData() {
     final dummyList = <HistoryItem>[
       const HistoryItem(
         icon: 'assets/icons/check_green.png',
-        title: '오늘의 종목 추천\n오늘 놓치면 안됩니다....',
+        title: '오늘의 종목 추천\n오늘 놓치면 안됩니다.!!!!!!오늘의 종목 추천 오늘 놓치면 안됩니다.오늘의 종목 추천~~!!오늘 놓치면 안됩니다.!!!!!!오늘의 종목 추천 오늘 놓치면 안됩니다.',
         content: '상세 내용이 더 있을 수 있음',
         dateTime: '2025-10-19 12:12:12',
-        spamScore: 83.0,
-        spamReason:
-        'AI를 활용한 분석 결과 비정상적인 URL, 발신자 정보 부족 등으로\n위험도가 70 이상이므로 해당 번호는 차단해주세요.',
+        spamScore: 83.0, // 70 이상 (빨간 UI)
+        spamReason: 'AI를 활용한 분석 결과 비정상적인 URL, 발신자 정보 부족 등으로\n위험도가 70 이상이므로 해당 번호는 차단해주세요.',
         chatGptText: 'ChatGPT가 생성한 문구 예시.\n\n1. 주의\n2. 의심\n3. 계속',
       ),
+
+      // 70 이하인 추가 더미 데이터 (초록색 UI)
+      const HistoryItem(
+        icon: 'assets/icons/re',
+        title: '안전한 메시지\n이 문자는 위험 요소가 없습니다. 정상이므로 차단할 필요가 없습니다.',
+        content: '해당 메시지는 AI 분석 결과 정상적으로 판단되었습니다.',
+        dateTime: '2025-10-20 14:05:33',
+        spamScore: 45.0, // 70 이하 (초록 UI)
+        spamReason: 'AI 분석 결과 정상적인 메시지로 판단되었습니다.',
+        chatGptText: 'ChatGPT가 분석한 결과 정상적인 문자입니다.',
+      ),
     ];
+
     items.value = [...items.value, ...dummyList];
   }
 }

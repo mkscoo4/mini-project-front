@@ -97,8 +97,7 @@ class DetailPage extends StatelessWidget {
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          // 스팸 분석 박스를 살짝 붉은톤(핑크 계열)으로?
-                          color: Colors.red.shade50,
+                          color: historyItem.spamScore >= 70 ? Colors.red.shade50 : Colors.green.shade50, // 빨간색(위험) / 초록색(안전)
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: boxShadow,
                         ),
@@ -110,7 +109,7 @@ class DetailPage extends StatelessWidget {
                               historyItem.spamScore.toStringAsFixed(0),
                               style: TextStyle(
                                 fontSize: 48,
-                                color: Colors.redAccent,
+                                color: historyItem.spamScore >= 70 ? Colors.redAccent : Colors.green, // 70 이상 빨간색, 70 미만 초록색
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -175,27 +174,6 @@ class DetailPage extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-
-      /// 하단 '뒤로가기' 버튼
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        child: SizedBox(
-          height: 56,
-          child: Center(
-            child: TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                '뒤로가기',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  color: Colors.blueAccent,
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );

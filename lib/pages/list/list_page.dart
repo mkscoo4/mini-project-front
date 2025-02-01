@@ -4,7 +4,6 @@ import 'package:koscom_test1/pages/detail/detail_page.dart';
 
 // main.dart에서 MessageManager 불러오기
 import 'package:koscom_test1/main.dart' show MessageManager;
-
 import '../../managers/message_manager.dart';
 
 class ListPage extends StatelessWidget {
@@ -55,6 +54,12 @@ class ListPage extends StatelessWidget {
                     const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final item = itemList[index];
+
+                      // spamScore에 따라 아이콘 결정
+                      final String iconPath = item.spamScore >= 70.0
+                          ? 'assets/icons/check_red.png' // 스팸 위험 높음
+                          : 'assets/icons/check_green.png'; // 스팸 위험 낮음
+
                       return InkWell(
                         onTap: () {
                           Navigator.push(
@@ -78,7 +83,7 @@ class ListPage extends StatelessWidget {
                               SizedBox(
                                 width: 40,
                                 height: 40,
-                                child: Image.asset(item.icon),
+                                child: Image.asset(iconPath), // 변경된 아이콘 적용
                               ),
                               const SizedBox(width: 12),
                               // 제목 + 날짜
@@ -89,6 +94,8 @@ class ListPage extends StatelessWidget {
                                     // 제목
                                     Text(
                                       item.title,
+                                      maxLines: 3, // 최대 3줄까지 표시
+                                      overflow: TextOverflow.ellipsis, // 초과 시 ... 표시
                                       style: const TextStyle(
                                         fontSize: 16,
                                         color: Colors.black87,

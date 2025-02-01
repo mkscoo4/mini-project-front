@@ -1,5 +1,3 @@
-// pages/detail/detail_page.dart
-
 import 'package:flutter/material.dart';
 import 'package:koscom_test1/models/history_item.dart'; // HistoryItem 모델 import
 
@@ -45,41 +43,36 @@ class DetailPage extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      /// 1) 문자 내용 박스
+                      /// 1) 📜 문자 내용 박스 (메모장 스타일)
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.yellow.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          ///border: Border.all(color: Colors.orange.shade100, width: 1.5),
                           boxShadow: boxShadow,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-
-                            const Text(
-                              '문자 내용',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                                color: Colors.black,
-                              ),
+                            Row(
+                              children: [
+                                Icon(Icons.sticky_note_2_rounded, color: Colors.orange),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  '메시지 내용',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    color: Colors.orangeAccent,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 7),
-                            // 작은 구분선(Decorative)
-                            Container(
-                              width: 70,
-                              height: 1,
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: Color(0xFF19214C),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            // 실제 메시지(HistoryItem에서 넘겨받은 정보)
+                            const SizedBox(height: 2),
                             Text(
                               '${historyItem.title}\n${historyItem.content}',
                               style: const TextStyle(
@@ -91,27 +84,41 @@ class DetailPage extends StatelessWidget {
                         ),
                       ),
 
-                      /// 2) 스팸 점수 박스
+                      /// 2) ⚠️ 스팸 점수 박스 (디자인 개선)
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: historyItem.spamScore >= 70 ? Colors.red.shade50 : Colors.green.shade50, // 빨간색(위험) / 초록색(안전)
+                          color: historyItem.spamScore >= 70 ? Colors.red.shade50 : Colors.green.shade50, // 빨강(위험) / 초록(안전)
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: boxShadow,
                         ),
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            // 스팸 점수를 크게 표시
-                            Text(
-                              historyItem.spamScore.toStringAsFixed(0),
-                              style: TextStyle(
-                                fontSize: 48,
-                                color: historyItem.spamScore >= 70 ? Colors.redAccent : Colors.green, // 70 이상 빨간색, 70 미만 초록색
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  width: 70,
+                                  height: 70,
+                                  decoration: BoxDecoration(
+                                    color: historyItem.spamScore >= 70
+                                        ? Colors.red.withOpacity(0.2)
+                                        : Colors.green.withOpacity(0.2), // 반투명 원형 배경
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                Text(
+                                  historyItem.spamScore.toStringAsFixed(0),
+                                  style: TextStyle(
+                                    fontSize: 48,
+                                    color: historyItem.spamScore >= 70 ? Colors.redAccent : Colors.green,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -127,7 +134,7 @@ class DetailPage extends StatelessWidget {
                         ),
                       ),
 
-                      /// 3) ChatGPT 생성 텍스트 박스
+                      /// 3) 💬 ChatGPT 분석 박스 (디자인 유지)
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
@@ -142,10 +149,7 @@ class DetailPage extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                Icon(
-                                  Icons.chat_bubble_outline_rounded,
-                                  color: Colors.blueAccent,
-                                ),
+                                Icon(Icons.chat_bubble_outline_rounded, color: Colors.blueAccent),
                                 const SizedBox(width: 8),
                                 Text(
                                   'ChatGPT 분석',

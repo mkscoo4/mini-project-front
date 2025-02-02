@@ -5,9 +5,6 @@ class MainHomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 가정: 실제로는 API에서 받아온 텍스트
-    // (아래 예시는 임시 placeholder 문자열)
-    final String financeInfo = 'API에서 받아온 금융 정보\n예) 금리 동향, 주가 정보 등';
     final String spamInfo = '[주식 투자 관련 스팸 문자]\n종목 추천\n\n'
         '[사칭 및 투자를 가장한 불법 스팸 문자]\n\n'
         '[불법 도박 사이트 접속 유도 문자]\nURL 접속 유도\n\n';
@@ -20,7 +17,7 @@ class MainHomeTab extends StatelessWidget {
           children: [
             const SizedBox(height: 16),
 
-            /// 상단 K-Spam 로고
+            /// 상단 K-Spamify 로고
             Padding(
               padding: const EdgeInsets.only(left: 25),
               child: Text(
@@ -72,7 +69,7 @@ class MainHomeTab extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            /// 첫 번째 컨텐츠 박스:  금융 정보
+            /// 금융 스팸 신고 안내
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
@@ -95,7 +92,7 @@ class MainHomeTab extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         const Text(
-                          '금융 정보',
+                          '금융 스팸 신고 안내',
                           style: TextStyle(
                             color: Colors.black,
                             fontWeight: FontWeight.w700,
@@ -104,22 +101,38 @@ class MainHomeTab extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    //const SizedBox(height: 15),
 
-                    /// 실제 내용(API 데이터)
-                    Text(
-                      financeInfo,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 14,
-                      ),
+                    /// 신고 절차 단계
+                    Column(
+                      children: [
+                        _buildDivider(),
+                        _buildStep(
+                          iconPath: 'assets/icons/1.png',
+                          title: '1. 사용자 신고',
+                          description: '홈페이지(spam.kisa.or.kr), Spamcop 프로그램, '
+                              '118 콜센터, 휴대폰 단말기의 간편신고 서비스 이용',
+                        ),
+                        _buildDivider(),
+                        _buildStep(
+                          iconPath: 'assets/icons/2.png',
+                          title: '2. 신고접수 및 위법사실 확인',
+                          description: '신고 접수 후, 해당 스팸이 법을 위반하였는지에 대한 확인',
+                        ),
+                        _buildDivider(),
+                        _buildStep(
+                          iconPath: 'assets/icons/3.png',
+                          title: '3. 신고처리',
+                          description: '법 위반의 정도에 따른 과태료 및 수사',
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
 
-            /// 두 번째 컨텐츠 박스:  금융 사기 및 스팸 유형
+            /// 🔍 금융 사기 및 스팸 유형
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
@@ -152,7 +165,7 @@ class MainHomeTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
-                    /// 실제 내용(API 데이터)
+                    /// 설명 텍스트
                     Text(
                       spamInfo,
                       style: const TextStyle(
@@ -168,6 +181,60 @@ class MainHomeTab extends StatelessWidget {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 단계별 신고 절차 UI 요소
+  Widget _buildStep({
+    required String iconPath,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Image.asset(
+          iconPath,
+          width: 40,
+          height: 40,
+          fit: BoxFit.contain,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 단계 간 구분선
+  Widget _buildDivider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Divider(
+        thickness: 1,
+        color: Colors.grey.shade300,
       ),
     );
   }

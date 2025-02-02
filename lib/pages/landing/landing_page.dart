@@ -31,7 +31,7 @@ class _LandingPageState extends State<LandingPage> {
           children: [
             // 메인 타이틀
             Text(
-              'K-Spam',
+              'K-Spamify',
               style: TextStyle(
                 fontSize: 36,
                 fontWeight: FontWeight.w900,

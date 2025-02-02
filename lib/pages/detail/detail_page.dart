@@ -40,18 +40,17 @@ class DetailPage extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
                       /// 1) 📜 문자 내용 박스 (메모장 스타일)
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(30),
                         decoration: BoxDecoration(
-                          color: Colors.yellow.shade50,
+                          color: Color(0xFFFF009),
                           borderRadius: BorderRadius.circular(16),
-                          ///border: Border.all(color: Colors.orange.shade100, width: 1.5),
                           boxShadow: boxShadow,
                         ),
                         child: Column(
@@ -88,7 +87,7 @@ class DetailPage extends StatelessWidget {
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           color: historyItem.spamScore >= 70 ? Colors.red.shade50 : Colors.green.shade50, // 빨강(위험) / 초록(안전)
                           borderRadius: BorderRadius.circular(12),
@@ -138,7 +137,7 @@ class DetailPage extends StatelessWidget {
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(30),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),

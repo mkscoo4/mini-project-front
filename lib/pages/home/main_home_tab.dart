@@ -24,7 +24,7 @@ class MainHomeTab extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(left: 25),
               child: Text(
-                'K-Spam',
+                'K-Spamify',
                 style: TextStyle(
                   color: Color(0xFF0D144B),
                   fontWeight: FontWeight.w900,
@@ -36,9 +36,9 @@ class MainHomeTab extends StatelessWidget {
 
             /// 검색 박스
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(15),
@@ -74,10 +74,10 @@ class MainHomeTab extends StatelessWidget {
 
             /// 첫 번째 컨텐츠 박스:  금융 정보
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(15),
@@ -121,9 +121,9 @@ class MainHomeTab extends StatelessWidget {
 
             /// 두 번째 컨텐츠 박스:  금융 사기 및 스팸 유형
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(15),

@@ -1,9 +1,7 @@
+// list_page.dart
 import 'package:flutter/material.dart';
 import 'package:koscom_test1/models/history_item.dart';
 import 'package:koscom_test1/pages/detail/detail_page.dart';
-
-// main.dart에서 MessageManager 불러오기
-import 'package:koscom_test1/main.dart' show MessageManager;
 import '../../managers/message_manager.dart';
 
 class ListPage extends StatelessWidget {
@@ -26,7 +24,7 @@ class ListPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// 상단 타이틀 (내역 보기)
+            // 상단 타이틀
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Text(
@@ -39,7 +37,7 @@ class ListPage extends StatelessWidget {
               ),
             ),
 
-            /// 리스트 (ValueListenableBuilder)
+            // 리스트
             Expanded(
               child: ValueListenableBuilder<List<HistoryItem>>(
                 valueListenable: MessageManager.instance.items,
@@ -47,18 +45,28 @@ class ListPage extends StatelessWidget {
                   if (itemList.isEmpty) {
                     return const Center(child: Text('아직 수신된 문자가 없습니다.'));
                   }
-
                   return ListView.separated(
                     itemCount: itemList.length,
                     separatorBuilder: (context, index) =>
                     const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final item = itemList[index];
-
-                      // spamScore에 따라 아이콘 결정
-                      final String iconPath = item.spamScore >= 70.0
-                          ? 'assets/icons/check_red.png' // 스팸 위험 높음
-                          : 'assets/icons/check_green.png'; // 스팸 위험 낮음
+                      // 아이콘: 분석 중일 경우 'spinner'면 spinner 표시, 아니면 spamScore 기준 결정
+                      Widget iconWidget;
+                      if (item.icon == 'spinner') {
+                        iconWidget = const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      } else {
+                        // spamScore에 따라 아이콘 결정 (여기서는 item.icon을 그대로 사용해도 됨)
+                        iconWidget = SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Image.asset(item.icon),
+                        );
+                      }
 
                       return InkWell(
                         onTap: () {
@@ -77,42 +85,60 @@ class ListPage extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: boxShadow,
                           ),
-                          child: Row(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: Image.asset(iconPath), // 변경된 아이콘 적용
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  iconWidget,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // 제목 (발신자와 일부 문자 내용)
+                                        Text(
+                                          item.title,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        // 날짜/시간
+                                        Text(
+                                          item.dateTime,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              // 제목 + 날짜
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // 제목
-                                    Text(
-                                      item.title,
-                                      maxLines: 3, // 최대 3줄까지 표시
-                                      overflow: TextOverflow.ellipsis, // 초과 시 ... 표시
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.black87,
+                              // 분석 중일 경우 하단에 spinner 표시 (추가적인 안내)
+                              if (item.spamReason == '분석 중...')
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Row(
+                                    children: const [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    // 날짜
-                                    Text(
-                                      item.dateTime,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
+                                      SizedBox(width: 8),
+                                      Text('분석 중...'),
+                                    ],
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),

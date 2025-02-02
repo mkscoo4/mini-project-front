@@ -17,6 +17,9 @@ import 'package:koscom_test1/models/history_item.dart';
 import 'package:koscom_test1/pages/detail/detail_page.dart';
 import 'package:koscom_test1/main.dart' show navigatorKey, receivePort;
 
+// 스팸 판별 임계값 상수 (한 곳에서 수정 가능)
+const double spamScoreThreshold = 70.0;
+
 // 백그라운드 isolate → 메인 isolate 통신용 포트 이름
 const String smsBgPortName = 'sms_bg_port';
 
@@ -30,7 +33,8 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
   final escapedBody = body.replaceAll('\n', '\\n');
   try {
     final response = await http.post(
-      Uri.parse('http://ec2-3-39-250-8.ap-northeast-2.compute.amazonaws.com:3000/api/v1/analyze'),
+      Uri.parse(
+          'http://ec2-3-39-250-8.ap-northeast-2.compute.amazonaws.com:3000/api/v1/analyze'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'message': escapedBody}),
     );
@@ -38,7 +42,8 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       return {
-        'is_suspicious': data['is_suspicious'] as bool,
+        // 기존 is_suspicious 값은 나중에 사용할 수 있도록 주석 처리
+        // 'is_suspicious': data['is_suspicious'] as bool,
         'spamScore': (data['score'] as num).toDouble(),
         'spamReason': data['summary'] as String,
         'chatGptText': data['description'] as String,
@@ -50,7 +55,7 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
     debugPrint("API request failed: $e");
   }
   return {
-    'is_suspicious': false,
+    // 'is_suspicious': false,
     'spamScore': 0.0,
     'spamReason': '',
     'chatGptText': '',
@@ -65,16 +70,18 @@ Future<void> showNotification({
   required String sender,
   required String body,
   required int timestamp,
-  required bool isSuspicious,
+  // required bool isSuspicious, // 기존 isSuspicious 값 (나중에 사용할 수 있음)
   required double spamScore,
   required String spamReason,
   required String chatGptText,
 }) async {
-  if (isSuspicious) {
+  // spam 판별은 spamScore 기준으로 함
+  if (spamScore >= spamScoreThreshold) {
     final previewLen = body.length < 20 ? body.length : 20;
     final previewBody = body.substring(0, previewLen);
     final titleText = '$sender 에게서 온 메시지';
-    final bodyText = '“$previewBody” 가 스팸 문자일 가능성이 높습니다! 여기서 확인하세요!';
+    final bodyText =
+        '“$previewBody” 가 스팸 문자일 가능성이 높습니다! 여기서 확인하세요!';
 
     const androidDetails = AndroidNotificationDetails(
       'sms_channel',
@@ -94,7 +101,7 @@ Future<void> showNotification({
         'address': sender,
         'body': body,
         'timestamp': timestamp,
-        'is_suspicious': isSuspicious,
+        // 'is_suspicious': isSuspicious, // 기존 isSuspicious 값 (보존)
         'spamScore': spamScore,
         'spamReason': spamReason,
         'chatGptText': chatGptText,
@@ -117,48 +124,67 @@ void backgroundMessageHandler(SmsMessage message) async {
   final body = message.body ?? '';
   final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-  final analysis = await analyzeMessage(body);
-  final isSuspicious = analysis['is_suspicious'] as bool;
-  final spamScore = analysis['spamScore'] as double;
-  final spamReason = analysis['spamReason'] as String;
-  final chatGptText = analysis['chatGptText'] as String;
-
-  await showNotification(
-    plugin: plugin,
-    sender: sender,
-    body: body,
-    timestamp: nowMillis,
-    isSuspicious: isSuspicious,
-    spamScore: spamScore,
-    spamReason: spamReason,
-    chatGptText: chatGptText,
-  );
-
+  // placeholder 데이터를 먼저 전달 (전체 메시지 사용)
   final sp = IsolateNameServer.lookupPortByName(smsBgPortName);
   if (sp != null) {
     sp.send({
       'address': sender,
       'body': body,
       'timestamp': nowMillis,
-      'is_suspicious': isSuspicious,
+      // 'is_suspicious': false, // 기존 값 (보존)
+      'spamScore': 0.0,
+      'spamReason': '분석 중...',
+      'chatGptText': '분석 중...',
+      'update': false,
+    });
+  }
+
+  final analysis = await analyzeMessage(body);
+  // final isSuspicious = analysis['is_suspicious'] as bool; // 기존 변수 (보존)
+  final spamScore = analysis['spamScore'] as double;
+  final spamReason = analysis['spamReason'] as String;
+  final chatGptText = analysis['chatGptText'] as String;
+
+  if (spamScore >= spamScoreThreshold) {
+    await showNotification(
+      plugin: plugin,
+      sender: sender,
+      body: body,
+      timestamp: nowMillis,
+      // isSuspicious: isSuspicious, // 기존 값 (보존)
+      spamScore: spamScore,
+      spamReason: spamReason,
+      chatGptText: chatGptText,
+    );
+  }
+
+  if (sp != null) {
+    sp.send({
+      'address': sender,
+      'body': body,
+      'timestamp': nowMillis,
+      // 'is_suspicious': isSuspicious, // 기존 값 (보존)
       'spamScore': spamScore,
       'spamReason': spamReason,
       'chatGptText': chatGptText,
+      'update': true,
     });
   }
 }
 
 /// ─────────────────────────────
-/// 메인 클래스: 포그라운드 SMS 수신 및 처리
+/// 메인 클래스: 포그라운드 SMS 및 MMS 수신 및 처리
 /// ─────────────────────────────
 class MessageManager {
   static final MessageManager instance = MessageManager._internal();
   MessageManager._internal();
 
   final Telephony telephony = Telephony.instance;
-  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+  FlutterLocalNotificationsPlugin();
 
-  final ValueNotifier<List<HistoryItem>> items = ValueNotifier<List<HistoryItem>>([]);
+  final ValueNotifier<List<HistoryItem>> items =
+  ValueNotifier<List<HistoryItem>>([]);
 
   static const _prefsKey = 'my_sms_list';
 
@@ -171,9 +197,7 @@ class MessageManager {
     await _requestPermissions();
     await _loadMessages();
     _listenSms();
-    _listenMms(); // MMS 폴링 시작
-
-    _insertDummyData(); // 테스트용 더미 데이터 (필요없으면 제거)
+    _listenMms();
   }
 
   Future<void> _initializeNotifications() async {
@@ -195,19 +219,28 @@ class MessageManager {
     final addr = data['address'] as String? ?? 'Unknown';
     final body = data['body'] as String? ?? '';
     final ts = data['timestamp'] as int? ?? 0;
-    final isSuspicious = data['is_suspicious'] as bool? ?? false;
     final spamScore = data['spamScore'] as num? ?? 0;
     final spamReason = data['spamReason'] as String? ?? '';
     final chatGptText = data['chatGptText'] as String? ?? '';
 
     final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-    final iconPath = isSuspicious ? 'assets/icons/check_green.png' : 'assets/icons/list.png';
+    String iconPath;
+    // placeholder 상태이면 spinner, 아니면 spamScore 기준으로 아이콘 결정
+    if (spamReason == '분석 중...') {
+      iconPath = 'spinner';
+    } else {
+      iconPath = (spamScore >= spamScoreThreshold)
+          ? 'assets/icons/check_red.png'
+          : 'assets/icons/check_green.png';
+    }
 
     final item = HistoryItem(
+      timestamp: ts,
       icon: iconPath,
       title: '[$addr]\n$body',
       content: '',
       dateTime: dt.toString().substring(0, 19),
+      // spamScore, spamReason, chatGptText는 그대로 사용
       spamScore: spamScore.toDouble(),
       spamReason: spamReason,
       chatGptText: chatGptText,
@@ -233,14 +266,65 @@ class MessageManager {
   Future<void> _loadMessages() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = prefs.getStringList(_prefsKey) ?? [];
-    final list = jsonList.map((e) => HistoryItem.fromJson(jsonDecode(e))).toList();
+    final list =
+    jsonList.map((e) => HistoryItem.fromJson(jsonDecode(e))).toList();
     items.value = list;
   }
 
   Future<void> _saveMessages() async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = items.value.map((item) => jsonEncode(item.toJson())).toList();
+    final jsonList =
+    items.value.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList(_prefsKey, jsonList);
+  }
+
+  /// placeholder 항목 추가 후 나중에 분석 결과로 업데이트하는 함수
+  /// (timestamp를 고유 식별자로 사용)
+  /// isSuspicious 관련 변수는 추후 사용을 위해 주석으로 보존함.
+  void _addOrUpdateHistoryItem({
+    required int timestamp,
+    required String address,
+    required String body,
+    // required bool isSuspicious, // 기존 변수 (보존, 추후 사용 예정)
+    required double spamScore,
+    required String spamReason,
+    required String chatGptText,
+  }) {
+    final current = List<HistoryItem>.from(items.value);
+    final index = current.indexWhere((item) => item.timestamp == timestamp);
+
+    String iconPath;
+    // placeholder 상태이면 spinner, 아니면 spamScore 기준에 따라 아이콘 결정
+    if (spamReason == '분석 중...') {
+      iconPath = 'spinner';
+    } else {
+      iconPath = (spamScore >= spamScoreThreshold)
+          ? 'assets/icons/check_red.png'
+          : 'assets/icons/check_green.png';
+    }
+
+    final dtStr = DateTime.fromMillisecondsSinceEpoch(timestamp)
+        .toString()
+        .substring(0, 19);
+
+    final newItem = HistoryItem(
+      timestamp: timestamp,
+      icon: iconPath,
+      title: '[$address]\n$body',
+      content: '',
+      dateTime: dtStr,
+      spamScore: spamScore,
+      spamReason: spamReason,
+      chatGptText: chatGptText,
+    );
+
+    if (index >= 0) {
+      current[index] = newItem;
+    } else {
+      current.insert(0, newItem);
+    }
+    items.value = current;
+    _saveMessages();
   }
 
   void _listenSms() {
@@ -250,28 +334,42 @@ class MessageManager {
         final body = msg.body ?? '';
         final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
+        // ① placeholder 항목 즉시 추가 (SMS: 전체 body 사용)
+        _addOrUpdateHistoryItem(
+          timestamp: nowMillis,
+          address: sender,
+          body: body,
+          // isSuspicious: false, // 기존 값 (보존)
+          spamScore: 0.0,
+          spamReason: '분석 중...',
+          chatGptText: '분석 중...',
+        );
+
+        // ② 분석 API 호출 후 결과로 업데이트
         final analysis = await analyzeMessage(body);
-        final isSuspicious = analysis['is_suspicious'] as bool;
+        // final isSuspicious = analysis['is_suspicious'] as bool; // 기존 값 (보존)
         final spamScore = analysis['spamScore'] as double;
         final spamReason = analysis['spamReason'] as String;
         final chatGptText = analysis['chatGptText'] as String;
 
-        await showNotification(
-          plugin: _notificationsPlugin,
-          sender: sender,
-          body: body,
-          timestamp: nowMillis,
-          isSuspicious: isSuspicious,
-          spamScore: spamScore,
-          spamReason: spamReason,
-          chatGptText: chatGptText,
-        );
+        if (spamScore >= spamScoreThreshold) {
+          await showNotification(
+            plugin: _notificationsPlugin,
+            sender: sender,
+            body: body,
+            timestamp: nowMillis,
+            // isSuspicious: isSuspicious, // 기존 값 (보존)
+            spamScore: spamScore,
+            spamReason: spamReason,
+            chatGptText: chatGptText,
+          );
+        }
 
-        _addHistoryItem(
+        _addOrUpdateHistoryItem(
+          timestamp: nowMillis,
           address: sender,
           body: body,
-          timestamp: nowMillis,
-          isSuspicious: isSuspicious,
+          // isSuspicious: isSuspicious, // 기존 값 (보존)
           spamScore: spamScore,
           spamReason: spamReason,
           chatGptText: chatGptText,
@@ -283,11 +381,12 @@ class MessageManager {
 
     receivePort.listen((data) {
       if (data is Map) {
-        _addHistoryItem(
+        final ts = data['timestamp'] as int? ?? 0;
+        _addOrUpdateHistoryItem(
+          timestamp: ts,
           address: data['address'] as String? ?? 'Unknown',
           body: data['body'] as String? ?? '',
-          timestamp: data['timestamp'] as int? ?? 0,
-          isSuspicious: data['is_suspicious'] as bool? ?? false,
+          // isSuspicious: data['is_suspicious'] as bool? ?? false, // 기존 값 (보존)
           spamScore: (data['spamScore'] as num?)?.toDouble() ?? 0.0,
           spamReason: data['spamReason'] as String? ?? '',
           chatGptText: data['chatGptText'] as String? ?? '',
@@ -301,46 +400,55 @@ class MessageManager {
     const pollInterval = Duration(milliseconds: 500);
     _mmsPollingTimer = Timer.periodic(pollInterval, (timer) async {
       try {
-        // 네이티브에서 최신 MMS 정보를 가져옵니다.
-        // getLatestMms는 MMS가 없으면 null 또는 빈 Map을 반환하도록 구현되어 있습니다.
         final result = await _mmsChannel.invokeMethod('getLatestMms');
         if (result != null && result is Map) {
-          // 예시 반환 Map: { "id": "12345", "address": "+821012345678", "timestamp": 1670000000000 }
           final mmsId = result['id'] as String?;
           final address = result['address'] as String? ?? 'Unknown';
-          final timestamp = result['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+          final timestamp = result['timestamp'] as int? ??
+              DateTime.now().millisecondsSinceEpoch;
           if (mmsId == null) return;
-
-          // 중복 처리를 위해 마지막 처리 시각보다 이후 MMS만 처리
           if (timestamp <= _lastMmsTimestamp) return;
           _lastMmsTimestamp = timestamp;
 
-          // 네이티브 메소드 getMmsText를 호출하여 MMS 텍스트를 가져옵니다.
-          final body = await _mmsChannel.invokeMethod('getMmsText', {'mmsId': mmsId}) as String? ?? '';
+          // MMS 본문을 가져와서 전체 본문 사용
+          final mmsText = await _mmsChannel.invokeMethod('getMmsText', {'mmsId': mmsId}) as String? ?? '';
 
-          // SMS와 동일하게 분석 및 알림 처리
-          final analysis = await analyzeMessage(body);
-          final isSuspicious = analysis['is_suspicious'] as bool;
+          // placeholder 항목 추가 (전체 mmsText 사용, 아이콘은 spinner 처리)
+          _addOrUpdateHistoryItem(
+            timestamp: timestamp,
+            address: address,
+            body: mmsText,
+            // isSuspicious: false, // 기존 값 (보존)
+            spamScore: 0.0,
+            spamReason: '분석 중...',
+            chatGptText: '분석 중...',
+          );
+
+          // 분석 및 알림 처리
+          final analysis = await analyzeMessage(mmsText);
+          // final isSuspicious = analysis['is_suspicious'] as bool; // 기존 값 (보존)
           final spamScore = analysis['spamScore'] as double;
           final spamReason = analysis['spamReason'] as String;
           final chatGptText = analysis['chatGptText'] as String;
 
-          await showNotification(
-            plugin: _notificationsPlugin,
-            sender: address,
-            body: body,
-            timestamp: timestamp,
-            isSuspicious: isSuspicious,
-            spamScore: spamScore,
-            spamReason: spamReason,
-            chatGptText: chatGptText,
-          );
+          if (spamScore >= spamScoreThreshold) {
+            await showNotification(
+              plugin: _notificationsPlugin,
+              sender: address,
+              body: mmsText,
+              timestamp: timestamp,
+              // isSuspicious: isSuspicious, // 기존 값 (보존)
+              spamScore: spamScore,
+              spamReason: spamReason,
+              chatGptText: chatGptText,
+            );
+          }
 
-          _addHistoryItem(
-            address: address,
-            body: body,
+          _addOrUpdateHistoryItem(
             timestamp: timestamp,
-            isSuspicious: isSuspicious,
+            address: address,
+            body: mmsText,
+            // isSuspicious: isSuspicious, // 기존 값 (보존)
             spamScore: spamScore,
             spamReason: spamReason,
             chatGptText: chatGptText,
@@ -350,56 +458,5 @@ class MessageManager {
         debugPrint("Error polling MMS: $e");
       }
     });
-  }
-
-  void _addHistoryItem({
-    required String address,
-    required String body,
-    required int timestamp,
-    required bool isSuspicious,
-    required double spamScore,
-    required String spamReason,
-    required String chatGptText,
-  }) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    final iconPath = isSuspicious ? 'assets/icons/check_green.png' : 'assets/icons/list.png';
-    final newItem = HistoryItem(
-      icon: iconPath,
-      title: '[$address]\n$body',
-      content: '',
-      dateTime: dt.toString().substring(0, 19),
-      spamScore: spamScore,
-      spamReason: spamReason,
-      chatGptText: chatGptText,
-    );
-    final current = List<HistoryItem>.from(items.value);
-    current.insert(0, newItem);
-    items.value = current;
-    _saveMessages();
-  }
-
-  // (테스트용) 더미 데이터 삽입
-  void _insertDummyData() {
-    final dummyList = <HistoryItem>[
-      const HistoryItem(
-        icon: 'assets/icons/check_green.png',
-        title: '오늘의 종목 추천\n오늘 놓치면 안됩니다.!!!!!!오늘의 종목 추천 오늘 놓치면 안됩니다.오늘의 종목 추천~~!!오늘 놓치면 안됩니다.!!!!!!오늘의 종목 추천 오늘 놓치면 안됩니다.',
-        content: '상세 내용이 더 있을 수 있음',
-        dateTime: '2025-10-19 12:12:12',
-        spamScore: 83.0,
-        spamReason: 'AI를 활용한 분석 결과 비정상적인 URL, 발신자 정보 부족 등으로\n위험도가 70 이상이므로 해당 번호는 차단해주세요.',
-        chatGptText: 'ChatGPT가 생성한 문구 예시.\n\n1. 주의\n2. 의심\n3. 계속',
-      ),
-      const HistoryItem(
-        icon: 'assets/icons/re',
-        title: '안전한 메시지\n이 문자는 위험 요소가 없습니다. 정상이므로 차단할 필요가 없습니다.',
-        content: '해당 메시지는 AI 분석 결과 정상적으로 판단되었습니다.',
-        dateTime: '2025-10-20 14:05:33',
-        spamScore: 45.0,
-        spamReason: 'AI 분석 결과 정상적인 메시지로 판단되었습니다.',
-        chatGptText: 'ChatGPT가 분석한 결과 정상적인 문자입니다.',
-      ),
-    ];
-    items.value = [...items.value, ...dummyList];
   }
 }

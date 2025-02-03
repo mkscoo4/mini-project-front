@@ -51,6 +51,7 @@ class ListPage extends StatelessWidget {
                     const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final item = itemList[index];
+
                       // 아이콘: 분석 중일 경우 'spinner'면 spinner 표시, 아니면 spamScore 기준 결정
                       Widget iconWidget;
                       if (item.icon == 'spinner') {
@@ -68,78 +69,115 @@ class ListPage extends StatelessWidget {
                         );
                       }
 
-                      return InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DetailPage(historyItem: item),
+                      // 삭제
+                      return Dismissible(
+                        key: Key(item.timestamp.toString()),
+                        direction: DismissDirection.endToStart, // 오른쪽→왼쪽 스와이프
+                        background: Container(
+                          color: Colors.redAccent,
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: const Icon(Icons.delete, color: Colors.white),
+                        ),
+                        confirmDismiss: (direction) async {
+                          // 삭제 전 사용자 확인 Dialog
+                          return await showDialog(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('삭제 확인'),
+                              content: const Text('이 항목을 삭제하시겠습니까?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: const Text('취소'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  child: const Text('삭제'),
+                                ),
+                              ],
                             ),
                           );
                         },
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: boxShadow,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  iconWidget,
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // 제목 (발신자와 일부 문자 내용)
-                                        Text(
-                                          item.title,
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.black87,
+                        onDismissed: (direction) {
+                          // 사용자가 확인 후 스와이프 완전히 하면 실제 삭제
+                          MessageManager.instance.deleteMessage(index);
+                        },
+                        // ↑↑↑ 여기까지 Dismissible 관련 코드 ↑↑↑
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DetailPage(historyItem: item),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: boxShadow,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    iconWidget,
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                        children: [
+                                          // 제목 (발신자와 일부 문자 내용)
+                                          Text(
+                                            item.title,
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          // 날짜/시간
+                                          Text(
+                                            item.dateTime,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // 분석 중일 경우 하단에 spinner 표시 (추가적인 안내)
+                                if (item.spamReason == '분석 중...')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: Row(
+                                      children: const [
+                                        SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
-                                        // 날짜/시간
-                                        Text(
-                                          item.dateTime,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
+                                        SizedBox(width: 8),
+                                        Text('분석 중...'),
                                       ],
                                     ),
                                   ),
-                                ],
-                              ),
-                              // 분석 중일 경우 하단에 spinner 표시 (추가적인 안내)
-                              if (item.spamReason == '분석 중...')
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Row(
-                                    children: const [
-                                      SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('분석 중...'),
-                                    ],
-                                  ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       );

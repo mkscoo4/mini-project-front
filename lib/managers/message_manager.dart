@@ -475,4 +475,15 @@ class MessageManager {
       }
     });
   }
+  /// ─────────────────────────────
+  /// 삭제 기능: 인덱스를 받아서 삭제
+  /// ─────────────────────────────
+  void deleteMessage(int index) {
+    final current = List<HistoryItem>.from(items.value);
+    if (index >= 0 && index < current.length) {
+      current.removeAt(index);
+      items.value = current;
+      _saveMessages();
+    }
+  }
 }

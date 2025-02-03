@@ -13,21 +13,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-// flutter_contacts 라이브러리
-import 'package:flutter_contacts/flutter_contacts.dart';
-
+import 'package:flutter_contacts/flutter_contacts.dart'; // 연락처
 import 'package:koscom_test1/models/history_item.dart';
 import 'package:koscom_test1/pages/detail/detail_page.dart';
 import 'package:koscom_test1/main.dart' show navigatorKey, receivePort;
 
-// 스팸 판별 임계값 상수
 const double spamScoreThreshold = 70.0;
 const String smsBgPortName = 'sms_bg_port';
 const MethodChannel _mmsChannel = MethodChannel('com.example.koscom_test1/mms');
 
-/// ─────────────────────────────
-/// 공통 함수: SMS 메시지 분석 API 호출
-/// ─────────────────────────────
+/// 한국 시간(UTC+9) 기준으로 08:00~21:00 범위인지 확인
+bool _isWithinKRWorkingHours() {
+  final nowUtc = DateTime.now().toUtc();
+  // KR 은 UTC+9
+  final nowKr = nowUtc.add(const Duration(hours: 9));
+  final hour = nowKr.hour; // 0~23
+  return hour >= 8 && hour < 21; // true면 "분석 가능 시간대"
+}
+
 Future<Map<String, dynamic>> analyzeMessage(String body) async {
   final escapedBody = body.replaceAll('\n', '\\n');
   try {
@@ -69,9 +72,6 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
   };
 }
 
-/// ─────────────────────────────
-/// 공통 함수: 스팸 메시지일 경우 알림 표시
-/// ─────────────────────────────
 Future<void> showNotification({
   required FlutterLocalNotificationsPlugin plugin,
   required String sender,
@@ -114,9 +114,7 @@ Future<void> showNotification({
   }
 }
 
-/// ─────────────────────────────
-/// 백그라운드 SMS 수신 시 호출되는 핸들러
-/// ─────────────────────────────
+/// 백그라운드 SMS 수신
 @pragma('vm:entry-point')
 void backgroundMessageHandler(SmsMessage message) async {
   final plugin = FlutterLocalNotificationsPlugin();
@@ -128,7 +126,16 @@ void backgroundMessageHandler(SmsMessage message) async {
   final body = message.body ?? '';
   final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-  // 메인 isolate로 placeholder 데이터 전송
+  // ─────────────────────────
+  // KR 시간대 체크
+  // ─────────────────────────
+  if (!_isWithinKRWorkingHours()) {
+    // 작업 시간대가 아니면 -> GPT 분석 및 히스토리 전송 X
+    return;
+  }
+
+  // (아래는 기존 로직과 동일)
+  // 우선 placeholder 전송
   final sp = IsolateNameServer.lookupPortByName(smsBgPortName);
   if (sp != null) {
     sp.send({
@@ -142,13 +149,11 @@ void backgroundMessageHandler(SmsMessage message) async {
     });
   }
 
-  // 실제 분석
   final analysis = await analyzeMessage(body);
   final spamScore = analysis['spamScore'] as double;
   final spamReason = analysis['spamReason'] as String;
   final chatGptText = analysis['chatGptText'] as String;
 
-  // 알림
   if (spamScore >= spamScoreThreshold) {
     await showNotification(
       plugin: plugin,
@@ -161,7 +166,6 @@ void backgroundMessageHandler(SmsMessage message) async {
     );
   }
 
-  // 메인 isolate로 최종 데이터 전송 (update: true)
   if (sp != null) {
     sp.send({
       'address': sender,
@@ -175,9 +179,7 @@ void backgroundMessageHandler(SmsMessage message) async {
   }
 }
 
-/// ─────────────────────────────
 /// 메인 클래스
-/// ─────────────────────────────
 class MessageManager {
   static final MessageManager instance = MessageManager._internal();
   MessageManager._internal();
@@ -191,21 +193,17 @@ class MessageManager {
 
   static const _prefsKey = 'my_sms_list';
 
-  // MMS 폴링 관련
   Timer? _mmsPollingTimer;
   int _lastMmsTimestamp = 0;
 
-  // 연락처 목록(전화번호) 저장용 Set
+  // 연락처 목록
   Set<String> _contactPhoneNumbers = {};
 
   Future<void> init() async {
     await _initializeNotifications();
     await _requestPermissions();
-    // 먼저 연락처 목록 로드
     await _loadContacts();
-    // 기존 메시지 목록 로드
     await _loadMessages();
-    // SMS/MMS 수신 리스너 등록
     _listenSms();
     _listenMms();
   }
@@ -259,36 +257,29 @@ class MessageManager {
     );
   }
 
-  /// 연락처 권한 및 알림 권한 요청
   Future<void> _requestPermissions() async {
-    // SMS 권한
     if (await Permission.sms.isDenied) {
       await Permission.sms.request();
     }
-    // 알림 권한(안드로이드 13 이상)
     if (Platform.isAndroid) {
       final ns = await Permission.notification.status;
       if (ns.isDenied || ns.isPermanentlyDenied) {
         await Permission.notification.request();
       }
     }
-    // 연락처 권한
     if (await Permission.contacts.isDenied) {
       await Permission.contacts.request();
     }
   }
 
-  /// flutter_contacts 로 연락처 불러와서 Set<String>에 저장
   Future<void> _loadContacts() async {
     try {
-      // 사용자에게 연락처 권한 요청
       final hasPermission = await FlutterContacts.requestPermission();
       if (!hasPermission) {
         debugPrint("Contacts permission denied!");
         return;
       }
 
-      // withProperties: 전화번호, 이메일 등 자세한 정보를 가져옴
       final List<Contact> contacts =
       await FlutterContacts.getContacts(withProperties: true);
 
@@ -308,22 +299,16 @@ class MessageManager {
     }
   }
 
-  /// 불필요한 문자를 제거하는 간단한 예시
-  /// (기호, 공백 등)
   String _normalizePhoneNumber(String phone) {
-    return phone
-        .replaceAll(RegExp(r'[\s\-\(\)\+]', multiLine: true), '')
-        .trim();
+    return phone.replaceAll(RegExp(r'[\s\-\(\)\+]', multiLine: true), '').trim();
   }
 
-  /// 이 번호가 연락처에 있는지 여부 판별
   bool _isContactNumber(String? number) {
     if (number == null) return false;
     final normalized = _normalizePhoneNumber(number);
     return _contactPhoneNumbers.contains(normalized);
   }
 
-  /// SharedPreferences에서 기존 메시지 목록 로드
   Future<void> _loadMessages() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = prefs.getStringList(_prefsKey) ?? [];
@@ -332,7 +317,6 @@ class MessageManager {
     items.value = list;
   }
 
-  /// SharedPreferences에 메시지 목록 저장
   Future<void> _saveMessages() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList =
@@ -340,7 +324,6 @@ class MessageManager {
     await prefs.setStringList(_prefsKey, jsonList);
   }
 
-  /// HistoryItem 추가/수정
   void _addOrUpdateHistoryItem({
     required int timestamp,
     required String address,
@@ -393,13 +376,19 @@ class MessageManager {
         final body = msg.body ?? '';
         final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-        // 1) 연락처에 저장된 번호인지 먼저 확인
+        // 연락처인지 확인
         if (_isContactNumber(sender)) {
-          // 연락처 번호면, API 요청 & 내역 추가 스킵
+          // 스킵
           return;
         }
 
-        // 2) placeholder(분석중)
+        // KR 시간대 체크
+        if (!_isWithinKRWorkingHours()) {
+          // 스킵 (GPT 분석 & 히스토리 추가 X)
+          return;
+        }
+
+        // 1) placeholder
         _addOrUpdateHistoryItem(
           timestamp: nowMillis,
           address: sender,
@@ -409,13 +398,13 @@ class MessageManager {
           chatGptText: '분석 중...',
         );
 
-        // 3) 분석
+        // 2) 실제 GPT 분석
         final analysis = await analyzeMessage(body);
         final spamScore = analysis['spamScore'] as double;
         final spamReason = analysis['spamReason'] as String;
         final chatGptText = analysis['chatGptText'] as String;
 
-        // 4) 스팸 알림
+        // 3) 알림
         if (spamScore >= spamScoreThreshold) {
           await showNotification(
             plugin: _notificationsPlugin,
@@ -428,7 +417,7 @@ class MessageManager {
           );
         }
 
-        // 5) 최종 내역 갱신
+        // 4) 히스토리 업데이트
         _addOrUpdateHistoryItem(
           timestamp: nowMillis,
           address: sender,
@@ -442,7 +431,7 @@ class MessageManager {
       listenInBackground: true,
     );
 
-    // 백그라운드 isolate -> 메인 isolate 데이터 수신
+    // 백그라운드 isolate -> 메인 isolate 데이터
     receivePort.listen((data) {
       if (data is Map) {
         final ts = data['timestamp'] as int? ?? 0;
@@ -452,13 +441,15 @@ class MessageManager {
         final spamReason = data['spamReason'] as String? ?? '';
         final chatGptText = data['chatGptText'] as String? ?? '';
 
-        // 연락처에 저장된 번호인지 확인
         if (_isContactNumber(address)) {
-          // 연락처 번호면 추가 안 함
           return;
         }
 
-        // 그렇지 않다면 히스토리에 추가/업데이트
+        // 여기서도 KR 시간대 체크
+        if (!_isWithinKRWorkingHours()) {
+          return;
+        }
+
         _addOrUpdateHistoryItem(
           timestamp: ts,
           address: address,
@@ -471,7 +462,7 @@ class MessageManager {
     });
   }
 
-  /// MMS 수신(폴링)
+  /// MMS 폴링
   void _listenMms() {
     const pollInterval = Duration(milliseconds: 500);
     _mmsPollingTimer = Timer.periodic(pollInterval, (timer) async {
@@ -486,9 +477,11 @@ class MessageManager {
           if (timestamp <= _lastMmsTimestamp) return;
           _lastMmsTimestamp = timestamp;
 
-          // 연락처에 저장된 번호인지 확인
+          // 연락처 여부 + KR 시간대 여부 체크
           if (_isContactNumber(address)) {
-            // 연락처 번호면 MMS 분석/내역 추가 스킵
+            return;
+          }
+          if (!_isWithinKRWorkingHours()) {
             return;
           }
 
@@ -499,7 +492,7 @@ class MessageManager {
           ) as String? ??
               '';
 
-          // 2) placeholder 추가
+          // placeholder
           _addOrUpdateHistoryItem(
             timestamp: timestamp,
             address: address,
@@ -509,13 +502,13 @@ class MessageManager {
             chatGptText: '분석 중...',
           );
 
-          // 3) 분석
+          // GPT 분석
           final analysis = await analyzeMessage(mmsText);
           final spamScore = analysis['spamScore'] as double;
           final spamReason = analysis['spamReason'] as String;
           final chatGptText = analysis['chatGptText'] as String;
 
-          // 4) 스팸 알림
+          // 알림
           if (spamScore >= spamScoreThreshold) {
             await showNotification(
               plugin: _notificationsPlugin,
@@ -528,7 +521,7 @@ class MessageManager {
             );
           }
 
-          // 5) 최종 내역 갱신
+          // 히스토리 업데이트
           _addOrUpdateHistoryItem(
             timestamp: timestamp,
             address: address,
@@ -544,7 +537,6 @@ class MessageManager {
     });
   }
 
-  /// 메시지 삭제
   void deleteMessage(int index) {
     final current = List<HistoryItem>.from(items.value);
     if (index >= 0 && index < current.length) {

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:koscom_test1/pages/home/home_page.dart'; // LandingPage 이후 이동할 화면이 home_page.dart라면 import
+import 'package:koscom_test1/pages/home/home_page.dart'; // LandingPage 이후 이동할 화면
 
 class LandingPage extends StatefulWidget {
   const LandingPage({Key? key}) : super(key: key);
@@ -29,21 +29,18 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // 메인 타이틀
-            Text(
-              'K-Spamify',
-              style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0D144B),
-              ),
+            // 로고 이미지
+            Image.asset(
+              'assets/icons/logo.png', // 로고 이미지 경로
+              width: 210, // 적절한 크기로 조정
+              fit: BoxFit.contain,
             ),
-            const SizedBox(height: 1),
+            const SizedBox(height: 3),
             // 서브 타이틀
             Text(
               '금융 사기 및 탐지 서비스',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[700],
               ),

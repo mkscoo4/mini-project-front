@@ -15,21 +15,21 @@ class MainHomeTab extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
 
-            /// 상단 K-Spamify 로고
+            /// 상단 로고 (왼쪽 정렬)
             Padding(
-              padding: const EdgeInsets.only(left: 25),
-              child: Text(
-                'K-Spamify',
-                style: TextStyle(
-                  color: Color(0xFF0D144B),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 30,
+              padding: const EdgeInsets.only(left: 15),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Image.asset(
+                  'assets/icons/logo.png', // 로고 이미지
+                  width: 180, // 크기 조정
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 8),
 
             /// 검색 박스
             Padding(
@@ -67,9 +67,9 @@ class MainHomeTab extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 11),
 
-            /// 금융 스팸 신고 안내
+            /// 📢 금융 스팸 신고 안내 (신고 절차 포함)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
@@ -101,9 +101,8 @@ class MainHomeTab extends StatelessWidget {
                         ),
                       ],
                     ),
-                    //const SizedBox(height: 15),
 
-                    /// 신고 절차 단계
+                    /// 신고 절차 안내
                     Column(
                       children: [
                         _buildDivider(),
@@ -132,7 +131,7 @@ class MainHomeTab extends StatelessWidget {
               ),
             ),
 
-            /// 🔍 금융 사기 및 스팸 유형
+            /// 금융 사기 및 스팸 유형
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(

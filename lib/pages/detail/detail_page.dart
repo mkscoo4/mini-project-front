@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:koscom_test1/models/history_item.dart'; // HistoryItem 모델 import
 
 class DetailPage extends StatelessWidget {
   final HistoryItem historyItem; // 어떤 항목을 눌렀는지 받음
 
   const DetailPage({Key? key, required this.historyItem}) : super(key: key);
+
+  /// 스팸 신고(118) 버튼 누르면 다이얼러 앱으로 이동
+  Future<void> _launchDialerFor118(BuildContext context) async {
+    final Uri telUri = Uri(scheme: 'tel', path: '118');
+    if (await canLaunchUrl(telUri)) {
+      // 다이얼 화면을 띄움
+      await launchUrl(telUri, mode: LaunchMode.externalApplication);
+    } else {
+      // 만약 다이얼 화면을 열 수 없으면 에러 메시지를 띄움
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('전화를 걸 수 없습니다.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,16 +38,43 @@ class DetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// 상단 타이틀 (상세 보기)
+            /// 상단 영역: "상세 보기" + 오른쪽 "신고하기" 버튼
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Text(
-                '상세 보기',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF19214C),
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '상세 보기',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF19214C),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    // 스타일 지정
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(
+                        color: Color(0xFF19214C), // 테두리 색
+                        width: 2,
+                      ),
+                      // foregroundColor를 지정해도 일부 아이콘은 테마 영향으로 보라색 뜰 수 있으므로
+                      // 아래처럼 아이콘, 텍스트에 직접 색상 지정하는 방법이 더 확실합니다.
+                    ),
+                    onPressed: () => _launchDialerFor118(context),
+                    icon: const Icon(
+                      Icons.report_gmailerrorred,
+                      color: Color(0xFF19214C), // 아이콘 색 지정
+                    ),
+                    label: Text(
+                      '신고하기',
+                      style: const TextStyle(
+                        color: Color(0xFF19214C), // 텍스트 색 지정
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -43,13 +85,13 @@ class DetailPage extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
-                      /// 1) 📜 문자 내용 박스 (메모장 스타일)
+                      /// 1) 📜 문자 내용 박스
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(30),
                         decoration: BoxDecoration(
-                          color: Color(0xFFFF009),
+                          color: const Color(0xFFFF009), // 임의 색
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: boxShadow,
                         ),
@@ -58,7 +100,10 @@ class DetailPage extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.sticky_note_2_rounded, color: Colors.orange),
+                                Icon(
+                                  Icons.sticky_note_2_rounded,
+                                  color: Colors.orange,
+                                ),
                                 const SizedBox(width: 8),
                                 const Text(
                                   '메시지 내용',
@@ -83,13 +128,15 @@ class DetailPage extends StatelessWidget {
                         ),
                       ),
 
-                      /// 2) ⚠️ 스팸 점수 박스 (디자인 개선)
+                      /// 2) ⚠️ 스팸 점수 박스
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color: historyItem.spamScore >= 70 ? Colors.red.shade50 : Colors.green.shade50, // 빨강(위험) / 초록(안전)
+                          color: historyItem.spamScore >= 70
+                              ? Colors.red.shade50
+                              : Colors.green.shade50,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: boxShadow,
                         ),
@@ -105,7 +152,7 @@ class DetailPage extends StatelessWidget {
                                   decoration: BoxDecoration(
                                     color: historyItem.spamScore >= 70
                                         ? Colors.red.withOpacity(0.2)
-                                        : Colors.green.withOpacity(0.2), // 반투명 원형 배경
+                                        : Colors.green.withOpacity(0.2),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -113,7 +160,9 @@ class DetailPage extends StatelessWidget {
                                   historyItem.spamScore.toStringAsFixed(0),
                                   style: TextStyle(
                                     fontSize: 48,
-                                    color: historyItem.spamScore >= 70 ? Colors.redAccent : Colors.green,
+                                    color: historyItem.spamScore >= 70
+                                        ? Colors.redAccent
+                                        : Colors.green,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -133,7 +182,7 @@ class DetailPage extends StatelessWidget {
                         ),
                       ),
 
-                      /// 3) 💬 ChatGPT 분석 박스 (디자인 유지)
+                      /// 3) 💬 ChatGPT 분석 박스
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
@@ -148,7 +197,10 @@ class DetailPage extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.chat_bubble_outline_rounded, color: Colors.blueAccent),
+                                Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  color: Colors.blueAccent,
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'ChatGPT 분석',

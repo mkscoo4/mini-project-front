@@ -13,17 +13,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+// flutter_contacts 라이브러리
+import 'package:flutter_contacts/flutter_contacts.dart';
+
 import 'package:koscom_test1/models/history_item.dart';
 import 'package:koscom_test1/pages/detail/detail_page.dart';
 import 'package:koscom_test1/main.dart' show navigatorKey, receivePort;
 
-// 스팸 판별 임계값 상수 (한 곳에서 수정 가능)
+// 스팸 판별 임계값 상수
 const double spamScoreThreshold = 70.0;
-
-// 백그라운드 isolate → 메인 isolate 통신용 포트 이름
 const String smsBgPortName = 'sms_bg_port';
-
-// MethodChannel 객체 (MMS 관련)
 const MethodChannel _mmsChannel = MethodChannel('com.example.koscom_test1/mms');
 
 /// ─────────────────────────────
@@ -42,7 +41,6 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
 
-      // description 필드가 list 형태일 경우, 각 요소를 '\n'로 이어 붙인다.
       final dynamic descData = data['description'];
       String chatGptText;
       if (descData is List) {
@@ -54,8 +52,6 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
       }
 
       return {
-        // 기존 is_suspicious 값은 나중에 사용할 수 있도록 주석 처리
-        // 'is_suspicious': data['is_suspicious'] as bool,
         'spamScore': (data['score'] as num).toDouble(),
         'spamReason': data['summary'] as String,
         'chatGptText': chatGptText,
@@ -67,7 +63,6 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
     debugPrint("API request failed: $e");
   }
   return {
-    // 'is_suspicious': false,
     'spamScore': 0.0,
     'spamReason': '',
     'chatGptText': '',
@@ -82,12 +77,10 @@ Future<void> showNotification({
   required String sender,
   required String body,
   required int timestamp,
-  // required bool isSuspicious, // 기존 isSuspicious 값 (나중에 사용할 수 있음)
   required double spamScore,
   required String spamReason,
   required String chatGptText,
 }) async {
-  // spam 판별은 spamScore 기준으로 함
   if (spamScore >= spamScoreThreshold) {
     final previewLen = body.length < 20 ? body.length : 20;
     final previewBody = body.substring(0, previewLen);
@@ -113,7 +106,6 @@ Future<void> showNotification({
         'address': sender,
         'body': body,
         'timestamp': timestamp,
-        // 'is_suspicious': isSuspicious, // 기존 isSuspicious 값 (보존)
         'spamScore': spamScore,
         'spamReason': spamReason,
         'chatGptText': chatGptText,
@@ -136,14 +128,13 @@ void backgroundMessageHandler(SmsMessage message) async {
   final body = message.body ?? '';
   final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-  // placeholder 데이터를 먼저 전달 (전체 메시지 사용)
+  // 메인 isolate로 placeholder 데이터 전송
   final sp = IsolateNameServer.lookupPortByName(smsBgPortName);
   if (sp != null) {
     sp.send({
       'address': sender,
       'body': body,
       'timestamp': nowMillis,
-      // 'is_suspicious': false, // 기존 값 (보존)
       'spamScore': 0.0,
       'spamReason': '분석 중...',
       'chatGptText': '분석 중...',
@@ -151,31 +142,31 @@ void backgroundMessageHandler(SmsMessage message) async {
     });
   }
 
+  // 실제 분석
   final analysis = await analyzeMessage(body);
-  // final isSuspicious = analysis['is_suspicious'] as bool; // 기존 변수 (보존)
   final spamScore = analysis['spamScore'] as double;
   final spamReason = analysis['spamReason'] as String;
   final chatGptText = analysis['chatGptText'] as String;
 
+  // 알림
   if (spamScore >= spamScoreThreshold) {
     await showNotification(
       plugin: plugin,
       sender: sender,
       body: body,
       timestamp: nowMillis,
-      // isSuspicious: isSuspicious, // 기존 값 (보존)
       spamScore: spamScore,
       spamReason: spamReason,
       chatGptText: chatGptText,
     );
   }
 
+  // 메인 isolate로 최종 데이터 전송 (update: true)
   if (sp != null) {
     sp.send({
       'address': sender,
       'body': body,
       'timestamp': nowMillis,
-      // 'is_suspicious': isSuspicious, // 기존 값 (보존)
       'spamScore': spamScore,
       'spamReason': spamReason,
       'chatGptText': chatGptText,
@@ -185,7 +176,7 @@ void backgroundMessageHandler(SmsMessage message) async {
 }
 
 /// ─────────────────────────────
-/// 메인 클래스: 포그라운드 SMS 및 MMS 수신 및 처리
+/// 메인 클래스
 /// ─────────────────────────────
 class MessageManager {
   static final MessageManager instance = MessageManager._internal();
@@ -200,14 +191,21 @@ class MessageManager {
 
   static const _prefsKey = 'my_sms_list';
 
-  // MMS 폴링 관련 변수: 최신 MMS의 타임스탬프 저장
+  // MMS 폴링 관련
   Timer? _mmsPollingTimer;
   int _lastMmsTimestamp = 0;
+
+  // 연락처 목록(전화번호) 저장용 Set
+  Set<String> _contactPhoneNumbers = {};
 
   Future<void> init() async {
     await _initializeNotifications();
     await _requestPermissions();
+    // 먼저 연락처 목록 로드
+    await _loadContacts();
+    // 기존 메시지 목록 로드
     await _loadMessages();
+    // SMS/MMS 수신 리스너 등록
     _listenSms();
     _listenMms();
   }
@@ -237,7 +235,6 @@ class MessageManager {
 
     final dt = DateTime.fromMillisecondsSinceEpoch(ts);
     String iconPath;
-    // placeholder 상태이면 spinner, 아니면 spamScore 기준으로 아이콘 결정
     if (spamReason == '분석 중...') {
       iconPath = 'spinner';
     } else {
@@ -252,7 +249,6 @@ class MessageManager {
       title: '[$addr]\n$body',
       content: '',
       dateTime: dt.toString().substring(0, 19),
-      // spamScore, spamReason, chatGptText는 그대로 사용
       spamScore: spamScore.toDouble(),
       spamReason: spamReason,
       chatGptText: chatGptText,
@@ -263,18 +259,71 @@ class MessageManager {
     );
   }
 
+  /// 연락처 권한 및 알림 권한 요청
   Future<void> _requestPermissions() async {
+    // SMS 권한
     if (await Permission.sms.isDenied) {
       await Permission.sms.request();
     }
+    // 알림 권한(안드로이드 13 이상)
     if (Platform.isAndroid) {
       final ns = await Permission.notification.status;
       if (ns.isDenied || ns.isPermanentlyDenied) {
         await Permission.notification.request();
       }
     }
+    // 연락처 권한
+    if (await Permission.contacts.isDenied) {
+      await Permission.contacts.request();
+    }
   }
 
+  /// flutter_contacts 로 연락처 불러와서 Set<String>에 저장
+  Future<void> _loadContacts() async {
+    try {
+      // 사용자에게 연락처 권한 요청
+      final hasPermission = await FlutterContacts.requestPermission();
+      if (!hasPermission) {
+        debugPrint("Contacts permission denied!");
+        return;
+      }
+
+      // withProperties: 전화번호, 이메일 등 자세한 정보를 가져옴
+      final List<Contact> contacts =
+      await FlutterContacts.getContacts(withProperties: true);
+
+      final Set<String> phoneNumbers = {};
+      for (var c in contacts) {
+        for (var phone in c.phones) {
+          final normalized = _normalizePhoneNumber(phone.number);
+          if (normalized.isNotEmpty) {
+            phoneNumbers.add(normalized);
+          }
+        }
+      }
+      _contactPhoneNumbers = phoneNumbers;
+      debugPrint('Loaded contacts. Count: ${_contactPhoneNumbers.length}');
+    } catch (e) {
+      debugPrint("Error loading contacts: $e");
+    }
+  }
+
+  /// 불필요한 문자를 제거하는 간단한 예시
+  /// (기호, 공백 등)
+  String _normalizePhoneNumber(String phone) {
+    return phone
+        .replaceAll(RegExp(r'[\s\-\(\)\+]', multiLine: true), '')
+        .trim();
+  }
+
+  /// 이 번호가 연락처에 있는지 여부 판별
+  bool _isContactNumber(String? number) {
+    if (number == null) return false;
+    final normalized = _normalizePhoneNumber(number);
+    return _contactPhoneNumbers.contains(normalized);
+  }
+
+  /// SharedPreferences에서 기존 메시지 목록 로드
   Future<void> _loadMessages() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = prefs.getStringList(_prefsKey) ?? [];
@@ -283,6 +332,7 @@ class MessageManager {
     items.value = list;
   }
 
+  /// SharedPreferences에 메시지 목록 저장
   Future<void> _saveMessages() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList =
@@ -290,14 +340,11 @@ class MessageManager {
     await prefs.setStringList(_prefsKey, jsonList);
   }
 
-  /// placeholder 항목 추가 후 나중에 분석 결과로 업데이트하는 함수
-  /// (timestamp를 고유 식별자로 사용)
-  /// isSuspicious 관련 변수는 추후 사용을 위해 주석으로 보존함.
+  /// HistoryItem 추가/수정
   void _addOrUpdateHistoryItem({
     required int timestamp,
     required String address,
     required String body,
-    // required bool isSuspicious, // 기존 변수 (보존, 추후 사용 예정)
     required double spamScore,
     required String spamReason,
     required String chatGptText,
@@ -306,7 +353,6 @@ class MessageManager {
     final index = current.indexWhere((item) => item.timestamp == timestamp);
 
     String iconPath;
-    // placeholder 상태이면 spinner, 아니면 spamScore 기준에 따라 아이콘 결정
     if (spamReason == '분석 중...') {
       iconPath = 'spinner';
     } else {
@@ -339,6 +385,7 @@ class MessageManager {
     _saveMessages();
   }
 
+  /// SMS 리스너
   void _listenSms() {
     telephony.listenIncomingSms(
       onNewMessage: (msg) async {
@@ -346,42 +393,46 @@ class MessageManager {
         final body = msg.body ?? '';
         final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-        // ① placeholder 항목 즉시 추가 (SMS: 전체 body 사용)
+        // 1) 연락처에 저장된 번호인지 먼저 확인
+        if (_isContactNumber(sender)) {
+          // 연락처 번호면, API 요청 & 내역 추가 스킵
+          return;
+        }
+
+        // 2) placeholder(분석중)
         _addOrUpdateHistoryItem(
           timestamp: nowMillis,
           address: sender,
           body: body,
-          // isSuspicious: false, // 기존 값 (보존)
           spamScore: 0.0,
           spamReason: '분석 중...',
           chatGptText: '분석 중...',
         );
 
-        // ② 분석 API 호출 후 결과로 업데이트
+        // 3) 분석
         final analysis = await analyzeMessage(body);
-        // final isSuspicious = analysis['is_suspicious'] as bool; // 기존 값 (보존)
         final spamScore = analysis['spamScore'] as double;
         final spamReason = analysis['spamReason'] as String;
         final chatGptText = analysis['chatGptText'] as String;
 
+        // 4) 스팸 알림
         if (spamScore >= spamScoreThreshold) {
           await showNotification(
             plugin: _notificationsPlugin,
             sender: sender,
             body: body,
             timestamp: nowMillis,
-            // isSuspicious: isSuspicious, // 기존 값 (보존)
             spamScore: spamScore,
             spamReason: spamReason,
             chatGptText: chatGptText,
           );
         }
 
+        // 5) 최종 내역 갱신
         _addOrUpdateHistoryItem(
           timestamp: nowMillis,
           address: sender,
           body: body,
-          // isSuspicious: isSuspicious, // 기존 값 (보존)
           spamScore: spamScore,
           spamReason: spamReason,
           chatGptText: chatGptText,
@@ -391,23 +442,36 @@ class MessageManager {
       listenInBackground: true,
     );
 
+    // 백그라운드 isolate -> 메인 isolate 데이터 수신
     receivePort.listen((data) {
       if (data is Map) {
         final ts = data['timestamp'] as int? ?? 0;
+        final address = data['address'] as String? ?? 'Unknown';
+        final body = data['body'] as String? ?? '';
+        final spamScore = (data['spamScore'] as num?)?.toDouble() ?? 0.0;
+        final spamReason = data['spamReason'] as String? ?? '';
+        final chatGptText = data['chatGptText'] as String? ?? '';
+
+        // 연락처에 저장된 번호인지 확인
+        if (_isContactNumber(address)) {
+          // 연락처 번호면 추가 안 함
+          return;
+        }
+
+        // 그렇지 않다면 히스토리에 추가/업데이트
         _addOrUpdateHistoryItem(
           timestamp: ts,
-          address: data['address'] as String? ?? 'Unknown',
-          body: data['body'] as String? ?? '',
-          // isSuspicious: data['is_suspicious'] as bool? ?? false, // 기존 값 (보존)
-          spamScore: (data['spamScore'] as num?)?.toDouble() ?? 0.0,
-          spamReason: data['spamReason'] as String? ?? '',
-          chatGptText: data['chatGptText'] as String? ?? '',
+          address: address,
+          body: body,
+          spamScore: spamScore,
+          spamReason: spamReason,
+          chatGptText: chatGptText,
         );
       }
     });
   }
 
-  /// MMS를 0.5초마다 폴링하여 처리하는 함수 (실시간 처리)
+  /// MMS 수신(폴링)
   void _listenMms() {
     const pollInterval = Duration(milliseconds: 500);
     _mmsPollingTimer = Timer.periodic(pollInterval, (timer) async {
@@ -422,49 +486,53 @@ class MessageManager {
           if (timestamp <= _lastMmsTimestamp) return;
           _lastMmsTimestamp = timestamp;
 
-          // MMS 본문을 가져와서 전체 본문 사용
+          // 연락처에 저장된 번호인지 확인
+          if (_isContactNumber(address)) {
+            // 연락처 번호면 MMS 분석/내역 추가 스킵
+            return;
+          }
+
+          // 1) MMS 본문 가져오기
           final mmsText = await _mmsChannel.invokeMethod(
             'getMmsText',
             {'mmsId': mmsId},
           ) as String? ??
               '';
 
-          // placeholder 항목 추가 (전체 mmsText 사용, 아이콘은 spinner 처리)
+          // 2) placeholder 추가
           _addOrUpdateHistoryItem(
             timestamp: timestamp,
             address: address,
             body: mmsText,
-            // isSuspicious: false, // 기존 값 (보존)
             spamScore: 0.0,
             spamReason: '분석 중...',
             chatGptText: '분석 중...',
           );
 
-          // 분석 및 알림 처리
+          // 3) 분석
           final analysis = await analyzeMessage(mmsText);
-          // final isSuspicious = analysis['is_suspicious'] as bool; // 기존 값 (보존)
           final spamScore = analysis['spamScore'] as double;
           final spamReason = analysis['spamReason'] as String;
           final chatGptText = analysis['chatGptText'] as String;
 
+          // 4) 스팸 알림
           if (spamScore >= spamScoreThreshold) {
             await showNotification(
               plugin: _notificationsPlugin,
               sender: address,
               body: mmsText,
               timestamp: timestamp,
-              // isSuspicious: isSuspicious, // 기존 값 (보존)
               spamScore: spamScore,
               spamReason: spamReason,
               chatGptText: chatGptText,
             );
           }
 
+          // 5) 최종 내역 갱신
           _addOrUpdateHistoryItem(
             timestamp: timestamp,
             address: address,
             body: mmsText,
-            // isSuspicious: isSuspicious, // 기존 값 (보존)
             spamScore: spamScore,
             spamReason: spamReason,
             chatGptText: chatGptText,
@@ -475,9 +543,8 @@ class MessageManager {
       }
     });
   }
-  /// ─────────────────────────────
-  /// 삭제 기능: 인덱스를 받아서 삭제
-  /// ─────────────────────────────
+
+  /// 메시지 삭제
   void deleteMessage(int index) {
     final current = List<HistoryItem>.from(items.value);
     if (index >= 0 && index < current.length) {

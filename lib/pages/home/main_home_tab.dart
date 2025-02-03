@@ -210,7 +210,7 @@ class _MainHomeTabState extends State<MainHomeTab> {
                         SizedBox(
                           width: 29,
                           height: 29,
-                          child: Image.asset('assets/icons/search_medium.png'),
+                          child: Image.asset('assets/icons/stock_chart.png'),
                         ),
                         const SizedBox(width: 8),
                         const Text(

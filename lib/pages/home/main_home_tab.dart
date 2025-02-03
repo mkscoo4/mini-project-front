@@ -1,7 +1,69 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
-class MainHomeTab extends StatelessWidget {
+class MainHomeTab extends StatefulWidget {
   const MainHomeTab({Key? key}) : super(key: key);
+
+  @override
+  State<MainHomeTab> createState() => _MainHomeTabState();
+}
+
+class _MainHomeTabState extends State<MainHomeTab> {
+  // 코스피/코스닥 지수 상태 저장
+  String _kospiIndex = '';
+  String _kosdaqIndex = '';
+
+  Timer? _timer; // 주기적 폴링용 타이머
+
+  @override
+  void initState() {
+    super.initState();
+    // 앱 시작 시 즉시 한 번 호출
+    _fetchStockIndexes();
+    // 5초마다 반복 호출
+    _timer = Timer.periodic(
+      const Duration(seconds: 5),
+          (timer) => _fetchStockIndexes(),
+    );
+  }
+
+  @override
+  void dispose() {
+    // 화면 종료 시 타이머 해제
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  /// 코스피/코스닥 지수를 서버에서 가져오는 함수
+  Future<void> _fetchStockIndexes() async {
+    final url = Uri.parse(
+      'http://ec2-3-39-250-8.ap-northeast-2.compute.amazonaws.com:3000/api/v1/info',
+    );
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _kospiIndex = data['KOSPIIndex']?.toString() ?? 'N/A';
+          _kosdaqIndex = data['KOSDAQIndex']?.toString() ?? 'N/A';
+        });
+      } else {
+        // 서버 오류 등
+        setState(() {
+          _kospiIndex = 'Error';
+          _kosdaqIndex = 'Error';
+        });
+      }
+    } catch (e) {
+      // 네트워크 에러 등
+      setState(() {
+        _kospiIndex = 'Error';
+        _kosdaqIndex = 'Error';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,9 +108,7 @@ class MainHomeTab extends StatelessWidget {
                       child: TextField(
                         decoration: InputDecoration(
                           hintText: '검색어를 입력하세요',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[700],
-                          ),
+                          hintStyle: TextStyle(color: Colors.grey[700]),
                           border: InputBorder.none,
                         ),
                       ),
@@ -131,7 +191,8 @@ class MainHomeTab extends StatelessWidget {
               ),
             ),
 
-            /// 금융 사기 및 스팸 유형
+            /// (원래 있었던 "금융 사기 및 스팸 유형" 카드 대신)
+            /// "코스피/코스닥 지수" 카드 표시
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
               child: Container(
@@ -153,7 +214,7 @@ class MainHomeTab extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         const Text(
-                          '금융 사기 및 스팸 유형',
+                          '코스피/코스닥 지수',
                           style: TextStyle(
                             color: Colors.black,
                             fontWeight: FontWeight.w700,
@@ -162,14 +223,21 @@ class MainHomeTab extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-
-                    /// 설명 텍스트
+                    const SizedBox(height: 12),
                     Text(
-                      spamInfo,
+                      'KOSPI: $_kospiIndex\nKOSDAQ: $_kosdaqIndex',
                       style: const TextStyle(
+                        fontSize: 16,
                         color: Colors.black87,
-                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '(5초 간격으로 자동 업데이트)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey,
                       ),
                     ),
                   ],

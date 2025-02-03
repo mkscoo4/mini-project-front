@@ -165,7 +165,6 @@ class _MainHomeTabState extends State<MainHomeTab> {
                     /// 신고 절차 안내
                     Column(
                       children: [
-                        //_buildDivider(),
                         const SizedBox(height: 10),
                         _buildStep(
                           iconPath: 'assets/icons/1.png',
@@ -173,14 +172,12 @@ class _MainHomeTabState extends State<MainHomeTab> {
                           description: '홈페이지(spam.kisa.or.kr), Spamcop 프로그램, '
                               '118 콜센터, 휴대폰 단말기의 간편신고 서비스 이용',
                         ),
-                        //_buildDivider(),
                         const SizedBox(height: 10),
                         _buildStep(
                           iconPath: 'assets/icons/2.png',
                           title: '2. 신고접수 및 위법사실 확인',
                           description: '신고 접수 후, 해당 스팸이 법을 위반하였는지에 대한 확인',
                         ),
-                        //_buildDivider(),
                         const SizedBox(height: 10),
                         _buildStep(
                           iconPath: 'assets/icons/3.png',

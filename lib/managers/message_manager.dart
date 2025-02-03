@@ -41,12 +41,24 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
+
+      // description 필드가 list 형태일 경우, 각 요소를 '\n'로 이어 붙인다.
+      final dynamic descData = data['description'];
+      String chatGptText;
+      if (descData is List) {
+        chatGptText = descData.join('\n');
+      } else if (descData != null) {
+        chatGptText = descData.toString();
+      } else {
+        chatGptText = '';
+      }
+
       return {
         // 기존 is_suspicious 값은 나중에 사용할 수 있도록 주석 처리
         // 'is_suspicious': data['is_suspicious'] as bool,
         'spamScore': (data['score'] as num).toDouble(),
         'spamReason': data['summary'] as String,
-        'chatGptText': data['description'] as String,
+        'chatGptText': chatGptText,
       };
     } else {
       debugPrint("API Error: ${response.statusCode} ${response.body}");
@@ -411,7 +423,11 @@ class MessageManager {
           _lastMmsTimestamp = timestamp;
 
           // MMS 본문을 가져와서 전체 본문 사용
-          final mmsText = await _mmsChannel.invokeMethod('getMmsText', {'mmsId': mmsId}) as String? ?? '';
+          final mmsText = await _mmsChannel.invokeMethod(
+            'getMmsText',
+            {'mmsId': mmsId},
+          ) as String? ??
+              '';
 
           // placeholder 항목 추가 (전체 mmsText 사용, 아이콘은 spinner 처리)
           _addOrUpdateHistoryItem(

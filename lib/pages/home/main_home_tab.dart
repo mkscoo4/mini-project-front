@@ -39,7 +39,7 @@ class _MainHomeTabState extends State<MainHomeTab> {
   /// 코스피/코스닥 지수를 서버에서 가져오는 함수
   Future<void> _fetchStockIndexes() async {
     final url = Uri.parse(
-      'http://ec2-3-39-250-8.ap-northeast-2.compute.amazonaws.com:3000/api/v1/info',
+      'http://221.168.37.187:3000/api/v1/info',
     );
     try {
       final response = await http.get(url);

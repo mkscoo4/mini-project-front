@@ -33,12 +33,10 @@ bool _isWithinKRWorkingHours() {
   return hour >= 8 && hour < 21;
 }
 
-/// ─────────────────────────────
-/// 화이트리스트 로드 및 체크 함수들
-/// ─────────────────────────────
+/// 화이트리스트 URL 목록
 Set<String> _whiteListUrls = {};
 
-/// 앱 시작 시, assets/whitelist.txt를 읽어 _whiteListUrls에 저장
+/// 앱 시작 시 assets/whitelist.txt 읽어서 _whiteListUrls에 저장
 Future<void> _loadWhiteList() async {
   try {
     final text = await rootBundle.loadString('assets/whitelist.txt');
@@ -53,16 +51,12 @@ Future<void> _loadWhiteList() async {
   }
 }
 
-/// 메시지 본문이 화이트리스트 URL을 포함하고 있는지 검사
-/// - "subdomain이어도 가능" → 실제로는 다양한 패턴 매칭이 필요할 수 있으나,
-///   예시에서는 단순히 "line이 body에 포함되는지"로 처리.
+/// 메시지에 화이트리스트된 URL이 포함되는지 확인
 bool _containsWhitelistedUrl(String body) {
-  // 소문자 변환 후 검사(대소문자 구분 안하려면)
   final lowerBody = body.toLowerCase();
   for (final url in _whiteListUrls) {
     if (url.isNotEmpty) {
       final lowerUrl = url.toLowerCase();
-      // 단순 substring 포함 여부
       if (lowerBody.contains(lowerUrl)) {
         return true;
       }
@@ -71,15 +65,60 @@ bool _containsWhitelistedUrl(String body) {
   return false;
 }
 
-/// ─────────────────────────────
-/// 메시지 분석 (GPT API)
-/// ─────────────────────────────
-Future<Map<String, dynamic>> analyzeMessage(String body) async {
+/// ──────────────────────────────────────────
+/// 룰 베이스 체크용 헬퍼 (최대 +20점)
+/// ──────────────────────────────────────────
+bool _isOverseasNumber(String address) {
+  // +82로 시작하면 국내, + 로 시작하면 해외
+  if (address.startsWith('+82')) return false;
+  if (address.startsWith('+')) return true;
+  return false;
+}
+
+bool _hasRepeatedSpecialCharacters(String body) {
+  // 동일 특수문자가 3회 이상 연속
+  final regex = RegExp(r'([^A-Za-z0-9\s])\1\1');
+  return regex.hasMatch(body);
+}
+
+bool _containsShortUrl(String body) {
+  // 대표적인 단축 URL 목록
+  final shortUrlDomains = [
+    'tinyurl.com',
+    'bit.ly',
+    'goo.gl',
+    't.co',
+    'ow.ly',
+    'buff.ly',
+    'adf.ly',
+    'cutt.ly',
+    'is.gd',
+    'tiny.cc',
+    't.ly',
+  ];
+  final lowerBody = body.toLowerCase();
+  for (final domain in shortUrlDomains) {
+    if (lowerBody.contains(domain)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// ──────────────────────────────────────────
+/// GPT + 룰 베이스 통합 분석
+/// ──────────────────────────────────────────
+Future<Map<String, dynamic>> analyzeMessage(String address, String body) async {
   final escapedBody = body.replaceAll('\n', '\\n');
+
+  // GPT 분석 결과
+  double rawGptScore = 0.0;     // GPT 원본 점수(0~100)
+  String spamReason = '';       // summary
+  String chatGptText = '';      // description
+
   try {
     final response = await http.post(
-      Uri.parse(
-          'http://221.168.37.187:3000/api/v1/analyze'),
+      Uri.parse('http://221.168.37.187:3000/api/v1/analyze'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'message': escapedBody}),
     );
@@ -87,37 +126,72 @@ Future<Map<String, dynamic>> analyzeMessage(String body) async {
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
 
+      rawGptScore = (data['score'] as num).toDouble();  // 예: 78
+      spamReason = data['summary'] as String? ?? '';
+
       final dynamic descData = data['description'];
-      String chatGptText;
       if (descData is List) {
         chatGptText = descData.join('\n');
       } else if (descData != null) {
         chatGptText = descData.toString();
-      } else {
-        chatGptText = '';
       }
-
-      return {
-        'spamScore': (data['score'] as num).toDouble(),
-        'spamReason': data['summary'] as String,
-        'chatGptText': chatGptText,
-      };
     } else {
       debugPrint("API Error: ${response.statusCode} ${response.body}");
     }
   } catch (e) {
     debugPrint("API request failed: $e");
   }
+
+  // 1) GPT 점수를 80점 만점으로 스케일링
+  //    (ex: rawGptScore=78 → scaled=78*0.8=62.4 → 반올림=62)
+  final int rawGptScoreInt = rawGptScore.round();           // 예: 78
+  final int scaledGptScoreInt = (rawGptScore * 0.8).round(); // 예: 62
+
+  // 2) 룰 베이스 점수(최대 +20)
+  double ruleScore = 0.0;
+  if (_isOverseasNumber(address)) {
+    ruleScore += 5.0;
+  }
+  if (_hasRepeatedSpecialCharacters(body)) {
+    ruleScore += 5.0;
+  }
+  if (_containsShortUrl(body)) {
+    ruleScore += 5.0;
+  }
+
+  // 주소록 여부 (MessageManager.instance 사용)
+  final bool isInContacts = MessageManager.instance.isContactNumber(address);
+  if (!isInContacts) {
+    ruleScore += 5.0;
+  }
+
+  final int ruleScoreInt = ruleScore.round(); // ex: 10
+  // 3) 최종 스팸 점수
+  final int finalSpamScoreInt = scaledGptScoreInt + ruleScoreInt; // ex: 62+10=72
+
+  // ─────────────────────────────────────────────
+  // 4) summary / description 내에 원본 점수(예: "78") → 최종 점수("72")로 치환
+  //   (단순 치환이므로, 실제로는 정규식 등으로 안전하게 처리 권장)
+  // ─────────────────────────────────────────────
+  final oldScoreStr = rawGptScoreInt.toString();         // "78"
+  final newScoreStr = finalSpamScoreInt.toString();      // "72"
+
+  if (spamReason.contains(oldScoreStr)) {
+    spamReason = spamReason.replaceAll(oldScoreStr, newScoreStr);
+  }
+  if (chatGptText.contains(oldScoreStr)) {
+    chatGptText = chatGptText.replaceAll(oldScoreStr, newScoreStr);
+  }
+
+  // 최종 double 형태로 반환
   return {
-    'spamScore': 0.0,
-    'spamReason': '',
-    'chatGptText': '',
+    'spamScore': finalSpamScoreInt.toDouble(),
+    'spamReason': spamReason,
+    'chatGptText': chatGptText,
   };
 }
 
-/// ─────────────────────────────
-/// 스팸 알림 표시
-/// ─────────────────────────────
+/// 스팸 알림
 Future<void> showNotification({
   required FlutterLocalNotificationsPlugin plugin,
   required String sender,
@@ -160,9 +234,7 @@ Future<void> showNotification({
   }
 }
 
-/// ─────────────────────────────
-/// 백그라운드 SMS 수신 (isolate)
-/// ─────────────────────────────
+/// 백그라운드 SMS 핸들러
 @pragma('vm:entry-point')
 void backgroundMessageHandler(SmsMessage message) async {
   final plugin = FlutterLocalNotificationsPlugin();
@@ -174,36 +246,29 @@ void backgroundMessageHandler(SmsMessage message) async {
   final body = message.body ?? '';
   final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-  // 1) 시간대 체크
+  // 한국 08:00~21:00 외면 무시
   if (!_isWithinKRWorkingHours()) {
-    // 작업 시간대가 아니라면 스킵
     return;
   }
 
-  // 2) 화이트리스트 체크
+  // 화이트리스트 체크
   if (_containsWhitelistedUrl(body)) {
-    // 화이트리스트에 해당 → GPT 분석 X
-    // 1) 직접 spamScore=0 / spamReason='화이트리스트 URL => 안전한 메시지' 로 처리
     final sp = IsolateNameServer.lookupPortByName(smsBgPortName);
     if (sp != null) {
       sp.send({
         'address': sender,
         'body': body,
         'timestamp': nowMillis,
-        'spamScore': 0.0, // "안전"을 의미(원하시면 100점 등 다른 값 사용)
-        'spamReason': '해당 문자는 스팸이 아닌 것으로 판단됩니다. '
-            '메시지에 포함된 링크가 검증된 공식 웹사이트로 확인되었기 때문입니다. '
-            '따라서 신뢰할 수 있는 출처에서 발송된 정상적인 문자로 보입니다.',
-        'chatGptText': '이 문자는 검증된 신뢰할 수 있는 링크를 포함하고 있어 스팸이 아닐 가능성이 높습니다. '
-            '스팸 메시지는 일반적으로 출처가 불분명하거나, 악성 링크 또는 피싱을 유도하는 내용을 포함하는 경우가 많습니다. '
-            '반면, 해당 메시지는 검증된 출처에서 발송한 공식적인 정보로 확인되므로, 사용자가 안심하고 내용을 확인할 수 있습니다.',
-        'update': true, // 바로 최종 상태
+        'spamScore': 0.0,
+        'spamReason': '화이트리스트 URL → 안전한 메시지로 판단합니다.',
+        'chatGptText': '해당 링크는 신뢰할 수 있는 출처로 보입니다.',
+        'update': true,
       });
     }
-    return; // GPT 호출하지 않음
+    return;
   }
 
-  // 3) placeholder 전송 (아직 분석 전)
+  // 메인 isolate에 "분석 중..."
   final sp = IsolateNameServer.lookupPortByName(smsBgPortName);
   if (sp != null) {
     sp.send({
@@ -217,13 +282,13 @@ void backgroundMessageHandler(SmsMessage message) async {
     });
   }
 
-  // 4) GPT 분석
-  final analysis = await analyzeMessage(body);
+  // GPT + 룰베이스 분석
+  final analysis = await analyzeMessage(sender, body);
   final spamScore = analysis['spamScore'] as double;
   final spamReason = analysis['spamReason'] as String;
   final chatGptText = analysis['chatGptText'] as String;
 
-  // 5) 알림
+  // 스팸이면 알림
   if (spamScore >= spamScoreThreshold) {
     await showNotification(
       plugin: plugin,
@@ -236,7 +301,7 @@ void backgroundMessageHandler(SmsMessage message) async {
     );
   }
 
-  // 6) 최종 데이터 전송
+  // 메인 isolate에 최종 업데이트
   if (sp != null) {
     sp.send({
       'address': sender,
@@ -251,7 +316,7 @@ void backgroundMessageHandler(SmsMessage message) async {
 }
 
 /// ─────────────────────────────
-/// 메인 클래스
+/// MessageManager
 /// ─────────────────────────────
 class MessageManager {
   static final MessageManager instance = MessageManager._internal();
@@ -268,23 +333,16 @@ class MessageManager {
 
   Timer? _mmsPollingTimer;
   int _lastMmsTimestamp = 0;
-
   Set<String> _contactPhoneNumbers = {};
 
   Future<void> init() async {
     await _initializeNotifications();
     await _requestPermissions();
 
-    // 1) 화이트리스트 파일 로드
     await _loadWhiteList();
-
-    // 2) 연락처 로드
     await _loadContacts();
-
-    // 3) 기존 메시지 로드
     await _loadMessages();
 
-    // 4) SMS/MMS 리스너 등록
     _listenSms();
     _listenMms();
   }
@@ -384,7 +442,7 @@ class MessageManager {
     return phone.replaceAll(RegExp(r'[\s\-\(\)\+]', multiLine: true), '').trim();
   }
 
-  bool _isContactNumber(String? number) {
+  bool isContactNumber(String? number) {
     if (number == null) return false;
     final normalized = _normalizePhoneNumber(number);
     return _contactPhoneNumbers.contains(normalized);
@@ -405,7 +463,6 @@ class MessageManager {
     await prefs.setStringList(_prefsKey, jsonList);
   }
 
-  /// history item 추가/수정
   void _addOrUpdateHistoryItem({
     required int timestamp,
     required String address,
@@ -450,7 +507,6 @@ class MessageManager {
     _saveMessages();
   }
 
-  /// SMS 리스너
   void _listenSms() {
     telephony.listenIncomingSms(
       onNewMessage: (msg) async {
@@ -458,33 +514,28 @@ class MessageManager {
         final body = msg.body ?? '';
         final nowMillis = DateTime.now().millisecondsSinceEpoch;
 
-        // 연락처인지 확인
-        if (_isContactNumber(sender)) {
-          return;
-        }
-        // 시간대 확인
+        // 시간대
         if (!_isWithinKRWorkingHours()) {
           return;
         }
-        // 화이트리스트 체크
+        // 주소록이면 스킵
+        if (isContactNumber(sender)) {
+          return;
+        }
+        // 화이트리스트
         if (_containsWhitelistedUrl(body)) {
-          // 화이트리스트 → GPT 스킵, spamScore=0 (또는 100), 이유=공공기관 링크
           _addOrUpdateHistoryItem(
             timestamp: nowMillis,
             address: sender,
             body: body,
             spamScore: 0.0,
-            spamReason: '해당 문자는 스팸이 아닌 것으로 판단됩니다. '
-            '메시지에 포함된 링크가 검증된 공식 웹사이트로 확인되었기 때문입니다. '
-            '따라서 신뢰할 수 있는 출처에서 발송된 정상적인 문자로 보입니다.',
-            chatGptText: '이 문자는 검증된 신뢰할 수 있는 링크를 포함하고 있어 스팸이 아닐 가능성이 높습니다. '
-            '스팸 메시지는 일반적으로 출처가 불분명하거나, 악성 링크 또는 피싱을 유도하는 내용을 포함하는 경우가 많습니다. '
-            '반면, 해당 메시지는 검증된 출처에서 발송한 공식적인 정보로 확인되므로, 사용자가 안심하고 내용을 확인할 수 있습니다.',
+            spamReason: '화이트리스트 URL → 안전한 메시지로 판단합니다.',
+            chatGptText: '해당 링크는 신뢰할 수 있는 출처로 보입니다.',
           );
           return;
         }
 
-        // 화이트리스트가 아니면 -> 기존 GPT 로직
+        // "분석 중..."
         _addOrUpdateHistoryItem(
           timestamp: nowMillis,
           address: sender,
@@ -494,11 +545,13 @@ class MessageManager {
           chatGptText: '분석 중...',
         );
 
-        final analysis = await analyzeMessage(body);
+        // GPT + 룰 베이스
+        final analysis = await analyzeMessage(sender, body);
         final spamScore = analysis['spamScore'] as double;
         final spamReason = analysis['spamReason'] as String;
         final chatGptText = analysis['chatGptText'] as String;
 
+        // 스팸 알림
         if (spamScore >= spamScoreThreshold) {
           await showNotification(
             plugin: _notificationsPlugin,
@@ -511,6 +564,7 @@ class MessageManager {
           );
         }
 
+        // 최종 업데이트
         _addOrUpdateHistoryItem(
           timestamp: nowMillis,
           address: sender,
@@ -524,7 +578,6 @@ class MessageManager {
       listenInBackground: true,
     );
 
-    // 백그라운드 isolate -> 메인 isolate
     receivePort.listen((data) {
       if (data is Map) {
         final ts = data['timestamp'] as int? ?? 0;
@@ -534,15 +587,15 @@ class MessageManager {
         final spamReason = data['spamReason'] as String? ?? '';
         final chatGptText = data['chatGptText'] as String? ?? '';
 
-        // 연락처 / 시간대 체크
-        if (_isContactNumber(address)) {
-          return;
-        }
+        // 시간대
         if (!_isWithinKRWorkingHours()) {
           return;
         }
+        // 주소록?
+        if (isContactNumber(address)) {
+          return;
+        }
 
-        // 백그라운드에서 "화이트리스트 => 0점" 으로 받은 경우도 있을 수 있음
         _addOrUpdateHistoryItem(
           timestamp: ts,
           address: address,
@@ -555,7 +608,6 @@ class MessageManager {
     });
   }
 
-  /// MMS 폴링
   void _listenMms() {
     const pollInterval = Duration(milliseconds: 500);
     _mmsPollingTimer = Timer.periodic(pollInterval, (timer) async {
@@ -564,45 +616,39 @@ class MessageManager {
         if (result != null && result is Map) {
           final mmsId = result['id'] as String?;
           final address = result['address'] as String? ?? 'Unknown';
-          final timestamp = result['timestamp'] as int? ??
-              DateTime.now().millisecondsSinceEpoch;
+          final timestamp =
+              result['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch;
           if (mmsId == null) return;
           if (timestamp <= _lastMmsTimestamp) return;
           _lastMmsTimestamp = timestamp;
 
-          // 연락처 / 시간대
-          if (_isContactNumber(address)) {
-            return;
-          }
           if (!_isWithinKRWorkingHours()) {
             return;
           }
+          if (isContactNumber(address)) {
+            return;
+          }
 
-          // 1) MMS 본문
+          // MMS 본문
           final mmsText = await _mmsChannel.invokeMethod(
             'getMmsText',
             {'mmsId': mmsId},
           ) as String? ??
               '';
 
-          // 2) 화이트리스트 체크
           if (_containsWhitelistedUrl(mmsText)) {
             _addOrUpdateHistoryItem(
               timestamp: timestamp,
               address: address,
               body: mmsText,
               spamScore: 0.0,
-              spamReason: '해당 문자는 스팸이 아닌 것으로 판단됩니다. '
-              '메시지에 포함된 링크가 검증된 공식 웹사이트로 확인되었기 때문입니다. '
-              '따라서 신뢰할 수 있는 출처에서 발송된 정상적인 문자로 보입니다.',
-              chatGptText: '이 문자는 검증된 신뢰할 수 있는 링크를 포함하고 있어 스팸이 아닐 가능성이 높습니다. '
-              '스팸 메시지는 일반적으로 출처가 불분명하거나, 악성 링크 또는 피싱을 유도하는 내용을 포함하는 경우가 많습니다. '
-              '반면, 해당 메시지는 검증된 출처에서 발송한 공식적인 정보로 확인되므로, 사용자가 안심하고 내용을 확인할 수 있습니다.',
+              spamReason: '화이트리스트 URL → 안전한 메시지로 판단합니다.',
+              chatGptText: '해당 링크는 신뢰할 수 있는 출처로 보입니다.',
             );
             return;
           }
 
-          // 그 외 -> GPT 분석
+          // "분석 중..."
           _addOrUpdateHistoryItem(
             timestamp: timestamp,
             address: address,
@@ -612,7 +658,7 @@ class MessageManager {
             chatGptText: '분석 중...',
           );
 
-          final analysis = await analyzeMessage(mmsText);
+          final analysis = await analyzeMessage(address, mmsText);
           final spamScore = analysis['spamScore'] as double;
           final spamReason = analysis['spamReason'] as String;
           final chatGptText = analysis['chatGptText'] as String;
